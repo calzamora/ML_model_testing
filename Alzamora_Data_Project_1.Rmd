@@ -1,0 +1,404 @@
+---
+title: "Alzamora_Data_Project_1"
+author: "Carter Alzamora"
+date: "2025-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DT)
+library(dplyr)
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+library(MASS)  
+library(tidyverse)
+library(ggsignif)
+library(doParallel)
+library(randomForest)
+library(parallel)
+library(pander)
+library(ggpubr)
+library(future)
+library(ISLR2)
+library(kernlab)
+library(GGally)
+library(discrim)
+library(kableExtra)
+library(klaR)
+library(pROC)
+library(vtable)
+library(topicmodels)
+```
+
+## Exploratory Data Analysis
+```{r, echo=FALSE, message=FALSE, warnings=FALSE,}
+#load data
+data <- read.csv("/Users/carteralzamora/bioinfo/Machine_learning/hw/Data_project_1/Heart.csv")
+data <- na.omit(data)
+
+#factor categorical variabels: 
+data$Sex <- factor(data$Sex)
+data$Fbs <- factor(data$Fbs)
+data$ChestPain <- factor(data$ChestPain)
+data$RestECG <- factor(data$RestECG)
+data$ExAng <- factor(data$ExAng)
+data$Slope <- factor(data$Slope)
+data$Ca <- factor(data$Ca)
+data$Thal <- factor(data$Thal)
+data$AHD <- factor(data$AHD)
+
+#level predictors: 
+data$Sex <- factor(data$Sex, levels=c(0,1), labels=c("male","female"))
+data$ChestPain <- factor(data$ChestPain, levels=c("typical", "nontypical", "nonanginal", "asymptomatic"))
+data$Fbs <- factor(data$Fbs, levels=c(0,1), labels=c("No","Yes")) 
+data$RestECG <- factor(data$RestECG, levels=c(0,1,2), labels=c("normal","wave abnormality", "hypertrophy"))
+data$ExAng <- factor(data$ExAng, levels=c(0,1), labels=c("No","Yes")) 
+data$Slope <- factor(data$Slope, levels=c(1,2,3), labels=c("upsloping","flat","downsloping")) 
+data$Ca <- factor(data$Ca, levels=c(0,1,2,3)) 
+data$Thal <- factor(data$Thal, levels=c("fixed", "normal", "reversable")) 
+data$AHD <- factor(data$AHD, levels=c("Yes", "No")) 
+
+data_QUAN <- data %>% dplyr::select(Age, RestBP, Chol, MaxHR, Oldpeak) %>% na.omit()
+data_CATE <- data %>% dplyr::select(Sex, ChestPain, Fbs, RestECG, ExAng, Slope, Ca, Thal, AHD) %>% na.omit()
+
+data<- data %>% na.omit() 
+
+```
+### Predictor Variables: 
+### Categorical
+- **Sex (Sex)**: male and female
+
+- **Type of Chest Pain (ChestPain)**: typical angina, atypical angina, non-anginal pain, and asymptomatic
+
+- **Fasting Blood Sugar Above 120 mg/dl (Fbs)**: yes and no
+
+- **Resting Electrocardiographic Results (RestECG)**: normal, having ST-T wave abnormality, and showing probable or definite
+left ventricular hypertrophy by Estes’ criteria
+
+- **Exercise Induced Angina (ExAng)**: yes and no
+
+- **Slope of Peak Exercise ST Segment (Slope)**: upsloping, flat, downsloping
+
+- **Number of Major Vessels colored by Flourosopy (Ca)**:
+0, 1, 2, 3
+
+- **Blood Disease/Thalassemia Status (Thal)**: normal, fixed defect, and reversable defect class
+
+- **Diagnosis of Heart Disease (AHD)**: yes and no
+
+- **Sex (Sex)**: male and female
+
+- **Type of Chest Pain (ChestPain)**: typical angina, atypical angina, non-anginal pain, and asymptomatic
+
+- **Fasting Blood Sugar Above 120 mg/dl (Fbs)**: yes and no
+
+- **Resting Electrocardiographic Results (RestECG)**: normal, having ST-T wave abnormality, and showing probable or definite
+left ventricular hypertrophy by Estes’ criteria
+
+- **Exercise Induced Angina (ExAng)**: yes and no
+
+- **Slope of Peak Exercise ST Segment (Slope)**: upsloping, flat, downsloping
+
+- **Number of Major Vessels colored by Flourosopy (Ca)**: 0, 1, 2, 3
+
+- **Blood Disease/Thalassemia Status (Thal)**: normal, fixed defect, and reversable defect class
+
+- **Diagnosis of Heart Disease (AHD)**: yes and no
+
+### Continuous 
+
+- **Age (Age)**: Age in years
+
+- **Resting Blood Pressure (RestBP)**: Resting blood pressure (in mm Hg on admission to the hospital)
+
+- **Cholesterol (Chol)**: Serum cholestoral in mg/dl
+
+- **Maximum Heart Rate (MaxHR)**: Maximum heart rate achieved in beats per minute
+
+- **Exercise ST Depression (Oldpeak)**: ST depression induced by exercise relative to rest
+
+## Predictor Variable Quantification
+The predictor variables are summarized below with their class balances being shown in **Table 1**. The distribution the categorical variables as well as their correlation with AHD is shown in **Figure 1** while the distributions of the continuous variables split between each response category is shown in **Figure 2**.
+
+**A**
+
+```{r quantitative summary stats, echo=FALSE}
+opts <- options(knitr.kable.NA = "")
+kable(summary(data_QUAN))
+```
+
+**B**
+
+```{r categorical summary stats, echo=FALSE}
+kable(summary(data_CATE %>% dplyr::select(Sex, Fbs, ExAng, AHD)))
+kable(summary(data_CATE %>% dplyr::select(RestECG, Slope,Thal, ChestPain,Ca)))
+```
+
+**Table 1.** Summary Statistics for all continuous (A) and categorical
+(B) variables.
+
+```{r, quant plots, echo=FALSE, fig.height = 10, fig.width = 15, warning=FALSE, message=FALSE}
+
+# Plot variables correlation w AHD
+Sex <- ggplot(data, aes(x = Sex, fill=AHD)) + geom_bar()
+
+ChestPain <- ggplot(data, aes(x = ChestPain, color = AHD, fill = AHD)) +
+                      scale_x_discrete(labels=c("1", "2", "3", "4")) + geom_bar()
+
+Fbs <- ggplot(data, aes(x = Fbs, fill=AHD)) + geom_bar()
+
+RestECG <- ggplot(data, aes(x = RestECG, fill=AHD)) +
+                      scale_x_discrete(labels=c("1", "2", "3")) + geom_bar()
+
+ExAng <- ggplot(data, aes(x = ExAng, fill=AHD)) + geom_bar()
+
+Slope <- ggplot(data, aes(x = Slope, fill=AHD)) +
+                      scale_x_discrete(labels=c("1", "2", "3")) + geom_bar()
+
+Ca <- ggplot(data, aes(x = Ca, fill=AHD)) + geom_bar()
+
+Thal <- ggplot(data, aes(x = Thal, fill = AHD, color = AHD)) +
+                      scale_x_discrete(labels=c("1", "2", "3")) + geom_bar()
+
+ggarrange(Sex, ChestPain, Fbs, RestECG,ExAng, Slope,Ca,Thal, common.legend = TRUE, ncol = 4, nrow = 2, labels = c("A","B","C","D","E", "F", "G", "H"))
+```
+**Figure 1:** Categorical variable class balance and correlation with the proportion of diagnosed AHD
+
+```{r, qual plots, echo=FALSE, fig.height = 10, fig.width = 10, warning=FALSE, message=FALSE}
+Age <- ggplot(data, aes(x = AHD, y = Age, color = AHD)) + geom_boxplot()
+RestBP <- ggplot(data, aes(x = AHD, y = RestBP, color = AHD)) + geom_boxplot()
+MaxHR <- ggplot(data, aes(x = AHD, y = MaxHR, color = AHD)) + geom_boxplot()
+Oldpead <- ggplot(data, aes(x = AHD, y = Oldpeak, color = AHD)) + geom_boxplot()
+
+ggarrange(Age, RestBP, MaxHR, Oldpead, common.legend = TRUE, ncol = 2, nrow = 2, labels = c("A","B","C","D"))
+```
+**Figure 2:** Continuous variable correlation with the diagnosis of heart disease (AHD). 
+
+## Model Selection: 
+### Random Forest
+**Features**:\
+-   can handle categorical response with 2 or more levels\
+-   can handle quantitative AND categorical predictors
+
+**Assumptions**:\
+-   Independent Observations
+
+### SVM 
+**Features**:\
+-   can handle categorical response with 2 or more levels\
+-   can handle highly dimensional data sets 
+
+**Assumptions**:\
+-   Independent Observations\
+-   2 categorical response variables
+
+### Logistic Regression
+
+**Features**:\
+-   can handle categorical response with 2 levels\
+-   can handle quantitative AND categorical predictors
+
+**Assumptions**:\
+-   Independent Observations\
+-   Response follows binomial distribution
+
+### Assumptions: 
+
+The independence assumption is violated, this can be seen in **Figure 3** showing the correlated relationship between the quantitative variables. However, because the response variable is categorical and binary (YES or NO), the distribution will be binomial so the binomial distribution assumption for SVM and Logistic Regression is true. 
+
+```{r gg pairs, message = FALSE, echo = FALSE}
+data_QUAN %>% ggpairs()
+```
+
+**Figure 3:** ggpairs of all continuous variables showing relationship between variables.
+
+## Compare Models:
+**Training data**: 80%\
+**Testing data:** 20%\
+The models were trained using a consistent workflow and cross validation method in order to compare accuracy and costs. The class balance of these two data sets are shown in **Table 2**.
+```{r, echo=FALSE, message=FALSE, warnings=FALSE,}
+#splitting data 80% train 20% test
+set.seed(4656)
+data_split <- initial_split(data, 4/5, strata = AHD)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+#set recipe 
+my_recipe <- recipe(AHD ~ ., data = train_data)
+
+#resampling scheme
+folds <- vfold_cv(train_data,
+                  v = 5,
+                  strata = AHD)
+
+
+#Set the Model engines
+# Logistical regression
+log_engine <- logistic_reg(engine = "glm")
+
+#random forest
+rf_engine <- rand_forest(trees = tune(), mtry = tune()) %>% set_engine("randomForest") %>% set_mode("classification") #ALLOWS FOR HYPER PARAMETER TUNING
+
+##SVM 
+eng_linear <- svm_linear(cost = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab", scaled = F) #
+
+eng_poly <- svm_poly(cost = tune(), degree = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab", scaled = F) # Traditional Oven
+
+eng_radial <- svm_rbf(cost = tune()) %>%
+  set_mode("classification") %>%
+  set_engine("kernlab", scaled = F) # Air Fryer
+
+
+# Build grid SVM: 
+# Low levels picked for computational simplicity
+cost_grid <- grid_regular(parameters(cost()), levels = 5) 
+# Low levels picked for computational simplicity
+cost_poly_grid <- grid_regular(parameters(cost(), degree()), levels = 5) 
+
+# Build Grid RF:
+rf_grid <- grid_regular(trees(), mtry(range = c(1, ncol(data)-1)), levels = 5) 
+
+# Set the Workflow
+wf <- workflow_set(
+  preproc = list("model" = my_recipe),
+  models = list("random_forest_engine" = rf_engine, 
+                "log_engine" = log_engine,
+                "eng_linear" = eng_linear, 
+                "eng_poly" = eng_poly, 
+                "eng_radial" = eng_radial)) #%>%
+#  option_add(id = "model_eng_linear", grid = cost_grid) %>%
+#  option_add(id = "model_eng_poly", grid = cost_poly_grid) %>%
+#  option_add(id = "model_eng_radial", grid = cost_grid) %>% 
+#  option_add(id = "model_random_forest_engine", grid = rf_grid) 
+  
+# Designate half of the cores to run 
+ncores <- floor(parallel::detectCores(logical = TRUE)/2)
+
+# Set the number of cores
+cl <- parallel::makePSOCKcluster(ncores)
+
+# Register cores to use
+doParallel::registerDoParallel(cl)
+
+# Run tuning 
+plan(multisession, workers = 4)
+
+#Identify the best method 
+run <- wf %>%
+  workflow_map(resamples = folds,
+               verbose = TRUE, 
+               seed =  4656,
+               metrics = metric_set(accuracy))
+
+# Stop parallel computing cores 
+parallel::stopCluster(cl)
+```
+**A**
+```{r trainset, echo=FALSE, message=FALSE, warning = FALSE}
+kable(summary(train_data %>% dplyr::select(AHD))) 
+```
+**B**
+```{r testset, echo=FALSE, message=FALSE, warning = FALSE}
+kable(summary(test_data %>% dplyr::select(AHD))) 
+```
+**Table 2:** Class balance of the training(A) and testing(B) data set
+
+### Plot Model Accuracies with Training Data
+```{r model accuracies, echo=FALSE, message=FALSE, warning = FALSE}
+acc <- collect_metrics(run)
+#acc %>% dplyr::select(model, .metric, mean, std_err) %>% group_by(model) %>% slice(which.max(mean)) 
+acc <- acc %>% group_by(model) %>% slice(which.max(mean)) 
+
+ggplot(acc, aes(x=wflow_id, y=mean)) +
+  geom_point() +
+  theme_bw() +
+  geom_errorbar(aes(ymin = mean - std_err, ymax = mean + std_err), width=0.1) + 
+  xlab("Model") +
+  ylab("Mean Accuracy")
+```
+
+**Figure 4:** Boxplot, including standard error bars representing mean accuracy of the best of all models post cross validation with the training data set.\
+
+All models except for the radial SVM engine perform similarly, with the linear SMV engine slightly out performing the other models. However, the standard error bars show that the random forest, logistic regression, poly SMV engine, are well within the same accuracy range while the radial SVM engine is drastically lower accuracy than all other models. 
+
+```{r auc calc, echo=FALSE, message=FALSE, warning = FALSE, include = FALSE}
+
+# Extract best fit
+best_rf <- run %>% extract_workflow_set_result(id = "model_random_forest_engine") %>% select_best(metric = "accuracy")
+best_lin <- run %>% extract_workflow_set_result(id = "model_eng_linear") %>% select_best(metric = "accuracy")
+best_rad <- run %>% extract_workflow_set_result(id = "model_eng_radial") %>% select_best(metric = "accuracy")
+best_poly <- run %>% extract_workflow_set_result(id = "model_eng_poly") %>% select_best(metric = "accuracy")
+best_log <- run %>% extract_workflow_set_result(id = "model_log_engine") %>% select_best(metric = "accuracy")
+
+# Fit to training
+train_rffitted <- run %>% extract_workflow(id = "model_random_forest_engine") %>% finalize_workflow(best_rf) %>% fit(data = train_data)
+train_linfitted <- run %>% extract_workflow(id = "model_eng_linear") %>% finalize_workflow(best_lin) %>% fit(data = train_data)
+train_radfitted <- run %>% extract_workflow(id = "model_eng_radial") %>% finalize_workflow(best_rad) %>% fit(data = train_data)
+train_polyfitted <- run %>% extract_workflow(id = "model_eng_poly") %>% finalize_workflow(best_poly) %>% fit(data = train_data)
+train_logfitted <- run %>% extract_workflow(id = "model_log_engine") %>% finalize_workflow(best_log) %>% fit(data = train_data)
+
+# Get prediction matrix with test data
+test_rfpred <- predict(train_rffitted, test_data) %>% bind_cols(predict(train_rffitted, test_data, type = "prob")) %>% bind_cols(test_data %>% dplyr::select(AHD)) %>% rename(pred_class = .pred_class) %>% mutate(model = "Random Forest AUC: 0.9001") 
+
+test_linpred <- predict(train_linfitted, test_data) %>% bind_cols(predict(train_linfitted, test_data, type = "prob")) %>% bind_cols(test_data %>% dplyr::select(AHD)) %>% rename(pred_class = .pred_class) %>% mutate(model = "SVM Linear Engine AUC: 0.8873")
+
+test_radgpred <- predict(train_radfitted , test_data) %>% bind_cols(predict(train_radfitted, test_data, type = "prob")) %>% bind_cols(test_data %>% dplyr::select(AHD)) %>% rename(pred_class = .pred_class) %>% mutate(model = "SVM Radial Engine: 0.7076")
+
+test_polypred <- predict(train_polyfitted, test_data) %>% bind_cols(predict(train_polyfitted, test_data, type = "prob")) %>% bind_cols(test_data %>% dplyr::select(AHD)) %>% rename(pred_class = .pred_class) %>% mutate(model = "SMV Poly Engine: 0.8873") 
+
+test_logpred <- predict(train_logfitted, test_data) %>% bind_cols(predict(train_logfitted, test_data, type = "prob")) %>% bind_cols(test_data %>% dplyr::select(AHD)) %>% rename(pred_class = .pred_class) %>% mutate(model = "Logistic Regression AUC: 0.9107") 
+
+# AUC
+#test_rfpred %>% roc(AHD, .pred_Yes) %>% auc() #0.9001
+#test_linpred %>% roc(AHD, .pred_Yes) %>% auc() # 0.8873
+#test_radgpred %>% roc(AHD, .pred_Yes) %>% auc() #0.7076
+#test_polypred %>% roc(AHD, .pred_Yes) %>% auc() #0.8873
+#test_logpred %>% roc(AHD, .pred_Yes) %>% auc() #0.9107
+
+```
+
+### Confusion Matricies
+```{r conf matrices, echo=FALSE, message=FALSE, warning = FALSE}
+train_rf_cm <- augment(train_rffitted, new_data = train_data) %>% 
+  conf_mat(truth = AHD, estimate = .pred_class) %>% autoplot(type = "heatmap") + ggtitle("Random Forest")
+train_lin <- augment(train_linfitted, new_data = train_data) %>% 
+  conf_mat(truth = AHD, estimate = .pred_class) %>% autoplot(type = "heatmap") + ggtitle("Linear Regression Engine")
+train_rad <- augment(train_radfitted, new_data = train_data) %>% 
+  conf_mat(truth = AHD, estimate = .pred_class) %>% autoplot(type = "heatmap") + ggtitle("Radial Engine")
+train_poly <- augment(train_polyfitted, new_data = train_data) %>% 
+  conf_mat(truth = AHD, estimate = .pred_class) %>% autoplot(type = "heatmap") + ggtitle("Poly Engine")
+train_log <- augment(train_logfitted, new_data = train_data) %>% 
+  conf_mat(truth = AHD, estimate = .pred_class) %>% autoplot(type = "heatmap") + ggtitle("Logistic Regression")
+
+ggarrange(train_rf_cm, train_lin, train_rad, train_poly,train_log, common.legend = TRUE, ncol = 2, nrow = 3, labels = c("A","B","C","D","E"))
+
+```
+
+**Figure 5:** Confusion Matricies of each engine **(A)** Random Forest, **(B)**Linear Regression, **(C)**Radial Engine, **(D)** Poly Engine, **(E)** Logistic Regression
+
+The confusion matricies in **Figure 5** indicate that the random forest class error rates are **Type 1:** 0.01923076923, and **Type 2:** 0.0534351145. This is by far the lowest of any of the engines, it again out competes logistic regression which shows **Type 1:** 0.08910891089, and **Type 2:** 0.125 error rates. 
+
+### ROC curves to TEST data
+```{r ROC curves, echo=FALSE, message=FALSE, warning = FALSE}
+#ROC CURVES
+bind_rows(test_rfpred, test_linpred, test_radgpred , test_polypred, test_logpred) %>%
+  mutate(Truth = rep(test_data$AHD, 5)) %>% 
+  group_by(model) %>% 
+  roc_curve(Truth, .pred_Yes) %>%
+  autoplot()
+
+```
+
+**Figure 6.** ROC curves including AUC value of the best of all models after cross validation applied to testing data.
+
+Each model was cross validated and applied to the testing data. The AUC values were calculated in order to show the performance of the model (**Figure 6**). Logistic Regression slightly outperforms the other models with random forest being the second best. 
+
+
+## Model Choice
+I would recommend the **Random Forest** model. Random Forest is shown to match the other models in accuracy **(Figure 4)**, and out compete the other models by far for class error rates **(Figure 5)**. Although it is slightly out competed in AUC values when merged with the testing data as shown in **Figure 6**, it is a close second, being only ~.01 lower than logistic regression.
